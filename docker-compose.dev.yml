@@ -1,0 +1,120 @@
+version: '3.9'
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: vehitrack_dev_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-password}
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - "6382:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  auth:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/auth
+    container_name: vehitrack_dev_auth
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-password}@172.19.0.1/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-vehitrack_secret_key_2026}
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+
+  identity:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/identity
+    container_name: vehitrack_dev_identity
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-password}@172.19.0.1/vehitrack
+      SECRET_KEY: ${SECRET_KEY:-vehitrack_secret_key_2026}
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
+
+  vehicle:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/vehicle
+    container_name: vehitrack_dev_vehicle
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-password}@172.19.0.1/vehitrack
+      SECRET_KEY: ${SECRET_KEY:-vehitrack_secret_key_2026}
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+
+  access_control:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/access_control
+    container_name: vehitrack_dev_access_control
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-password}@172.19.0.1/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-vehitrack_secret_key_2026}
+    ports:
+      - "8004:8000"
+    restart: unless-stopped
+
+  session:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/session
+    container_name: vehitrack_dev_session
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-password}@172.19.0.1/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-vehitrack_secret_key_2026}
+    ports:
+      - "8007:8000"
+    restart: unless-stopped
+
+  nginx:
+    build: ./nginx
+    container_name: vehitrack_dev_nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - auth
+      - identity
+      - vehicle
+      - access_control
+      - session
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+volumes:
+  redis_dev_data:

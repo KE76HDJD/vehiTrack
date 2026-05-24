@@ -1,0 +1,81 @@
+# Version control
+.git
+.gitignore
+.github
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+*.pyc
+__pycache__
+
+# Python
+*.egg-info
+dist
+build
+.pytest_cache
+.coverage
+*.pyo
+venv
+env
+.env
+
+# Node/Frontend
+node_modules
+.npm
+package-lock.json
+pnpm-lock.yaml
+dist
+build
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# CI/CD
+.gitlab-ci.yml
+.github
+.circleci
+
+# Documentation
+README.md
+*.md
+docs
+
+# Testing
+tests
+test
+*.test.js
+pytest.ini
+.pytest
+
+# Logs
+*.log
+logs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project files
+PLAN.md
+PROJECT_DETAILS.md
+PHASE1_COMPLETE.md
+COMPLIANCE_AUDIT_REPORT.md
+EXECUTIVE_SUMMARY.md
+README_AUDIT.md
+AUDIT_INDEX.txt
+AUDIT_SUMMARY_QUICK.txt
+audit_summary.json
+synthese_projet.md
+verify_connections.py
+
+# Cache
+.cache
+.mypy_cache
+.dmypy.json
+dmypy.json

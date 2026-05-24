@@ -1,0 +1,59 @@
+# Version control
+.git
+.gitignore
+.github
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+coverage
+
+# Build artifacts
+.next
+dist
+build
+out
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+__tests__
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+jest.config.js
+vitest.config.ts
+.cypress
+cypress
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Project docs
+*.md
+docs
+PLAN.md
+PROJECT_DETAILS.md
+
+# Logs
+*.log
+logs

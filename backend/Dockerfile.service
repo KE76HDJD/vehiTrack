@@ -1,0 +1,34 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies for OpenCV and Tesseract
+RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libglib2.0-0 \
+    tesseract-ocr \
+    libtesseract-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create the backend package structure
+RUN mkdir -p /app/backend
+
+# Copy common layer into the backend package
+COPY ./common /app/backend/common
+RUN touch /app/backend/__init__.py
+
+# Copy the specific service into the backend package
+ARG SERVICE_PATH
+COPY ./${SERVICE_PATH}/app /app/backend/service_app
+RUN touch /app/backend/service_app/__init__.py
+
+# Set PYTHONPATH to root so we can import 'backend.common' and 'backend.service_app'
+ENV PYTHONPATH="/app"
+
+EXPOSE 8000
+
+# Run using the new module path
+CMD ["uvicorn", "backend.service_app.main:app", "--host", "0.0.0.0", "--port", "8000"]

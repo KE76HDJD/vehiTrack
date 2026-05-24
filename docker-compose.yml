@@ -1,0 +1,234 @@
+version: '3.9'
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: vehitrack
+      POSTGRES_USER: ${POSTGRES_USER:-vehitrack_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./scripts/create_hypertables.sql:/docker-entrypoint-initdb.d/02_hypertables.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d vehitrack"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-password}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-password}", "ping"]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-vehitrack_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-password}
+    volumes:
+      - minio_data:/data
+
+  auth:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/auth
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-vehitrack_secret_key_2026}
+    ports:
+      - "8001:8000"
+
+  identity:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/identity
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+    ports:
+      - "8002:8000"
+
+  vehicle:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/vehicle
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+    ports:
+      - "8003:8000"
+
+  access_control:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/access_control
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+    ports:
+      - "8004:8000"
+
+  ocr:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/ocr
+    depends_on:
+      minio: { condition: service_started }
+    environment:
+      MINIO_ENDPOINT: minio:9000
+    ports:
+      - "8005:8000"
+
+  analytics:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/analytics
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+    ports:
+      - "8006:8000"
+
+  session:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/session
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+    ports:
+      - "8007:8000"
+
+  report:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/report
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_started }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/1
+    ports:
+      - "8008:8000"
+
+  notification:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/notification
+    depends_on:
+      kafka: { condition: service_started }
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8009:8000"
+
+  iot_bridge:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/iot_bridge
+    depends_on:
+      redis: { condition: service_healthy }
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+    ports:
+      - "8010:8000"
+
+  dashboard:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/dashboard
+    depends_on:
+      redis: { condition: service_healthy }
+    ports:
+      - "8011:8000"
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.service
+      args:
+        SERVICE_PATH: services/report
+    depends_on: [report, redis, postgres]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vehitrack_user}:${POSTGRES_PASSWORD:-yaokouma}@postgres/vehitrack
+      REDIS_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-password}@redis:6379/1
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    depends_on: [auth, identity, vehicle, access_control, session, analytics]
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on: [auth, identity, vehicle, access_control, session, analytics, frontend]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
